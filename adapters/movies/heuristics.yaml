@@ -1,0 +1,17 @@
+# MovieLens heuristics (Phase 6 - placeholder)
+domain: movies
+top_k: 20
+normalization: minmax
+
+signals:
+  popularity: { weight: 0.1 }
+  als_cf:     { weight: 0.5, params: { rank: 32, reg: 0.1, max_iter: 10 } }
+  content:    { weight: 0.2, feature_weights: { } }
+  segments:   { weight: 0.1, params: { k: 8 } }
+  rules:      { weight: 0.0, params: { min_support: 0.01, min_confidence: 0.2 } }
+  trends:     { weight: 0.1, params: { halflife_days: 30 } }
+
+filters:
+  exclude_seen: true
+  exclude_items: []
+  require_features: {}

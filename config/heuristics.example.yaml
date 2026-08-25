@@ -1,0 +1,51 @@
+# Heuristics configuration for the preference engine
+# This file controls signal weights, parameters, and filtering behavior.
+
+# Which adapter to load from adapters/
+domain: synthetic
+
+# Number of items to return in recommendations
+top_k: 20
+
+# Per-signal score normalization method: minmax | zscore
+normalization: minmax
+
+# Signal configurations
+# Set weight to 0 to disable a signal entirely (saves computation)
+signals:
+  popularity:
+    weight: 0.1
+    # No additional params - simple interaction count
+
+  als_cf:
+    weight: 0.5
+    params:
+      rank: 32          # Latent factor dimension
+      reg: 0.1          # Regularization parameter
+      max_iter: 10      # Training iterations
+
+  content:
+    weight: 0.2
+    feature_weights: {} # feature_name -> weight; empty = equal weights
+
+  segments:
+    weight: 0.1
+    params:
+      k: 8              # Number of user clusters
+
+  rules:
+    weight: 0.0         # Disabled by default
+    params:
+      min_support: 0.01
+      min_confidence: 0.2
+
+  trends:
+    weight: 0.1
+    params:
+      halflife_days: 30 # Recency decay half-life
+
+# Filtering options
+filters:
+  exclude_seen: true           # Don't recommend items the user already interacted with
+  exclude_items: []            # List of item_ids to never recommend
+  require_features: {}         # e.g. { available: true } - item must have feature=value

@@ -1,0 +1,25 @@
+# INES 2025 elections heuristics.
+#
+# Only popularity + segments are active. Every respondent has exactly one
+# interaction (their v104 answer), so als_cf / content / rules can't learn
+# anything and trends is meaningless when all responses are from the same
+# survey window. Segments carries the load, driven by demographics.
+domain: elections
+top_k: 10
+normalization: minmax
+
+signals:
+  popularity: { weight: 0.3 }
+  segments:   { weight: 0.7, params: { k: 15 } }
+  als_cf:     { weight: 0.0, params: { rank: 32, reg: 0.1, max_iter: 10 } }
+  content:    { weight: 0.0, feature_weights: { } }
+  rules:      { weight: 0.0, params: { min_support: 0.01, min_confidence: 0.2 } }
+  trends:     { weight: 0.0, params: { halflife_days: 30 } }
+
+filters:
+  # Keep the user's chosen party in the recommendations — showing "did the
+  # model recommend the party they actually chose?" is the whole point of
+  # a validation demo here.
+  exclude_seen: false
+  exclude_items: []
+  require_features: {}

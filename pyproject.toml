@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "preference-engine"
+version = "0.1.0"
+description = "A domain-blind preference engine for ranked recommendations"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pyspark>=3.5.0",
+    "pydantic>=2.0.0",
+    "PyYAML>=6.0",
+    "kafka-python>=2.0.0",
+    "fastapi>=0.110.0",
+    "uvicorn>=0.29.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "mypy>=1.0.0",
+]
+
+[project.scripts]
+preference-engine = "preference_engine.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/preference_engine"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+addopts = "-v"
