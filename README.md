@@ -43,29 +43,89 @@ The three built-in adapters (`synthetic`, `movies`, `elections`) are radically d
 
 ## Quick Start
 
+End-to-end walkthrough against MovieLens. Every step is a single command; the second half is meant to be run live in front of an audience.
+
+### 0. One-time setup
+
 ```bash
 # venv (on NixOS, add --system-site-packages so numpy/BLAS resolve)
 uv venv .venv
 source .venv/bin/activate
 uv pip install -e ".[dev]"
-
-# Run against the MovieLens adapter (expects data/ml-100k/)
-preference-engine -c adapters/movies/heuristics.yaml build-features --batch
-preference-engine -c adapters/movies/heuristics.yaml fit
-preference-engine -c adapters/movies/heuristics.yaml recommend --user 42
 ```
 
-The `-c` flag picks a heuristics YAML, which in turn picks the adapter (`domain:` field) and sets signal weights. See [Heuristics Configuration](#heuristics-configuration).
+The `-c` flag on every `preference-engine` command below picks a heuristics YAML, which in turn picks the adapter (`domain:` field) and sets signal weights. See [Heuristics Configuration](#heuristics-configuration).
 
-For the HTTP serving path (Kafka optional):
+### 1. Start Kafka
 
 ```bash
-docker compose up -d                                                    # start Kafka
-preference-engine -c adapters/movies/heuristics.yaml bootstrap          # empty feature store
-preference-engine -c adapters/movies/heuristics.yaml serve              # FastAPI on :8000
+docker compose up -d
+docker ps --filter name=preference-engine-kafka   # confirm broker is up
 ```
 
-Then POST batches of interactions or GET recommendations. See [Streaming and HTTP Serving](#streaming-and-http-serving).
+### 2. Bootstrap an empty movie feature store
+
+Writes only the user + movie catalog to `.data/ml-100k/feature_store/`. No interactions.
+
+```bash
+preference-engine -c adapters/movies/heuristics.yaml bootstrap
+```
+
+### 3. Start the server
+
+```bash
+preference-engine -c adapters/movies/heuristics.yaml serve
+```
+
+On startup the server fits every active signal against the empty interaction table. Signals that need interactions (ALS) will be skipped and logged; popularity / trends / content / segments fit against the catalog only. FastAPI listens on `:8000`.
+
+### 4. See what "no data" looks like
+
+In a second terminal:
+
+```bash
+curl http://localhost:8000/recommend/196
+```
+
+Every candidate comes back with the same score. There are no interactions yet, so each scorer collapses to a constant fallback and min-max normalization pins them to 0.5. This is the "cold" baseline.
+
+### 5. Watch Kafka (optional, third terminal)
+
+```bash
+./kafka_consumer_viewer.sh
+```
+
+Tails the `preference-engine.interactions` topic so you can watch each event flow through Kafka as you POST.
+
+### 6. Convert MovieLens ratings to a POST body
+
+```bash
+python3 udata_to_json.py data/ml-100k/u.data interactions.json
+```
+
+Produces an ~8.7 MB JSON file matching the [POST /interactions](#endpoints) schema: `{"interactions": [{"user_id":..., "item_id":..., "value":..., "ts":...}, ...]}`.
+
+### 7. Feed the whole dataset in
+
+```bash
+curl -X POST http://localhost:8000/interactions \
+     -H 'Content-Type: application/json' \
+     --data @interactions.json
+```
+
+Publishes all 100,000 ratings to Kafka (visible in the terminal from step 5), appends them to the feature store, and triggers a full retrain. The request blocks until retraining finishes; expect several minutes on a laptop.
+
+### 8. See what "with data" looks like
+
+```bash
+curl http://localhost:8000/recommend/196
+```
+
+Scores now vary. The engine has real interaction history to rank against.
+
+---
+
+For alternatives to the REST path (batch feature-store build from raw CSVs, CLI-only fit/recommend, ingesting through the Kafka producer instead of HTTP), see [CLI Reference](#cli-reference).
 
 ---
 
@@ -742,18 +802,3 @@ final_project/
   tests/
     test_persistence.py                    scorer save/load round-trip
 ```
-
----
-
-## Diagrams to Add
-
-The README works standalone, but some visuals would make it click faster. Suggestions for what to add, and where:
-
-1. **End-to-end lifecycle flowchart.** Nodes for `adapter -> feature store -> signals -> combiner -> top-k`, with a parallel streaming lane showing the `POST /interactions -> append -> refresh_aggregates -> retrain -> save_scorers -> serve` loop. Would fit under [End-to-End Lifecycle](#end-to-end-lifecycle).
-
-2. **Signal decision matrix visual.** A grid of signals x adapters showing which fire and which are dead weight (green cell for movies/als_cf, red cell for elections/als_cf, etc.). Would fit under [Signals](#signals) or [Adapters](#adapters).
-
-3. **Component diagram.** Boxes for `DomainAdapter`, `FeatureStore`, `Scorer`, `RecommendationEngine`, `combine()`, `FastAPI app` with arrows showing who calls whom. Would fit under [Architecture](#architecture). The graphify graph at `src/graphify-out/graph.html` already has this interactively; a static screenshot would work too.
-
-4. **FastAPI docs screenshot.** The auto-generated Swagger UI at `http://localhost:8000/docs` after running `serve`. Would fit under [Streaming and HTTP Serving](#streaming-and-http-serving).
-
