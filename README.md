@@ -47,12 +47,40 @@ End-to-end walkthrough against MovieLens. Every step is a single command; the se
 
 ### 0. One-time setup
 
+**Linux / macOS:**
+
 ```bash
 # venv (on NixOS, add --system-site-packages so numpy/BLAS resolve)
 uv venv .venv
 source .venv/bin/activate
 uv pip install -e ".[dev]"
 ```
+
+**Windows (PowerShell):** Prereqs: Python 3.11+ and a JDK on PATH.
+
+```powershell
+# 1. venv with stdlib `venv` (bundles pip), then activate and install
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e ".[dev]"
+
+# 2. Install winutils — Spark uses Hadoop's file APIs, which need native binaries on Windows
+mkdir "$env:USERPROFILE\hadoop\bin" -Force
+curl.exe -sSL -o "$env:USERPROFILE\hadoop\bin\winutils.exe" `
+    https://github.com/cdarlint/winutils/raw/master/hadoop-3.3.6/bin/winutils.exe
+curl.exe -sSL -o "$env:USERPROFILE\hadoop\bin\hadoop.dll" `
+    https://github.com/cdarlint/winutils/raw/master/hadoop-3.3.6/bin/hadoop.dll
+
+# 3. Set HADOOP_HOME persistently (User scope) and add to PATH
+[System.Environment]::SetEnvironmentVariable("HADOOP_HOME", "$env:USERPROFILE\hadoop", "User")
+$p = [System.Environment]::GetEnvironmentVariable("Path", "User")
+[System.Environment]::SetEnvironmentVariable("Path", "$env:USERPROFILE\hadoop\bin;$p", "User")
+
+# 4. CLOSE and REOPEN PowerShell so the env vars take effect, then reactivate the venv
+.\.venv\Scripts\Activate.ps1
+```
+
+If Spark throws `UnsatisfiedLinkError: NativeIO$Windows.access0`, `HADOOP_HOME` isn't set — usually because the terminal was opened before step 3.
 
 The `-c` flag on every `preference-engine` command below picks a heuristics YAML, which in turn picks the adapter (`domain:` field) and sets signal weights. See [Heuristics Configuration](#heuristics-configuration).
 
