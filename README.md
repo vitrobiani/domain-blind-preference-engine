@@ -7,7 +7,8 @@ The whole system is built around one idea: the core knows nothing about the doma
 ## Table of Contents
 
 - [Overview](#overview)
-- [Quick Start](#quick-start)
+- [Quick Start: MovieLens](#quick-start-movielens)
+- [Quick Start: Elections](#quick-start-elections)
 - [Architecture](#architecture)
 - [End-to-End Lifecycle](#end-to-end-lifecycle)
 - [Signals](#signals)
@@ -41,7 +42,7 @@ The three built-in adapters (`synthetic`, `movies`, `elections`) are radically d
 
 ---
 
-## Quick Start
+## Quick Start: MovieLens
 
 End-to-end walkthrough against MovieLens. Every step is a single command; the second half is meant to be run live in front of an audience.
 
@@ -150,6 +151,64 @@ curl http://localhost:8000/recommend/196
 ```
 
 Scores now vary. The engine has real interaction history to rank against.
+
+---
+
+## Quick Start: Elections
+
+Same shape as the MovieLens walkthrough, but against the INES 2025 survey. Assumes step 0 (one-time setup) is already done. Kafka is optional here too — start it with `docker compose up -d` if you want the audit trail, otherwise `published_to_kafka: false` and the flow still works.
+
+### 1. Bootstrap an empty elections feature store
+
+Writes only the respondent + party catalog to `.data/Elections/feature_store/`. No interactions.
+
+```bash
+preference-engine -c adapters/elections/heuristics.yaml bootstrap
+```
+
+### 2. Start the server
+
+```bash
+preference-engine -c adapters/elections/heuristics.yaml serve
+```
+
+Fits active signals (popularity + segments; others are weight 0 in [adapters/elections/heuristics.yaml](adapters/elections/heuristics.yaml)) against the empty table. FastAPI listens on `:8000`.
+
+### 3. See what "no data" looks like
+
+In a second terminal:
+
+```bash
+curl http://localhost:8000/recommend/295709
+```
+
+Every party comes back with the same score — the cold baseline.
+
+### 4. Convert the STATA CSV to a POST body
+
+```bash
+python3 elections_to_json.py data/Elections/2025_STATA.csv elections_interactions.json
+```
+
+Mirrors the elections adapter: keeps only real party codes (1–13), maps them to slugs, drops the sentinel codes (30/94/96/97/98/99). Produces one interaction per respondent in the [POST /interactions](#endpoints) schema.
+
+### 5. Feed the whole dataset in
+
+```bash
+curl -X POST http://localhost:8000/interactions \
+     -H 'Content-Type: application/json' \
+     --data @elections_interactions.json
+```
+
+Much faster than MovieLens — only ~1,500 rows and only two signals to retrain (popularity + segments).
+
+### 6. See what "with data" looks like
+
+```bash
+curl http://localhost:8000/recommend/295709
+```
+
+Scores now vary. Because [`filters.exclude_seen: false`](adapters/elections/heuristics.yaml) is set for elections, respondent 295709's actually-voted party stays in the recommendation list — so you can eyeball "did the model rank the party they picked highly?" as a sanity check.
 
 ---
 
